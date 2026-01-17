@@ -1,6 +1,8 @@
 {
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
-    "dotenv": "^17.2.3"
+    "dotenv": "^17.2.3",
+    "pdf-parse": "^2.4.5",
+    "pdfjs-dist": "^5.4.530"
   }
 }

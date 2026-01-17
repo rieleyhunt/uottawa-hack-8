@@ -3,6 +3,7 @@ const fs = require('fs');
 const url = require('url');
 require('dotenv').config();
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { PDFParse } = require('pdf-parse');
 
 const hostname = '0.0.0.0';
 const port = process.env.PORT || 3001;
@@ -10,75 +11,70 @@ const port = process.env.PORT || 3001;
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API);
 console.log("API Key:", process.env.GEMINI_API?.slice(0, 4) + "...");
 
-// Store conversation history per session (simple in-memory storage)
-const conversations = new Map();
+async function extractTextFromPdf(pdfBuffer) {
+  const parser = new PDFParse({ data: pdfBuffer });
+  const result = await parser.getText();
+  return result.text;
+}
 
-async function callGemini(prompt, sessionId = 'default', personality = 'girlfriend') {
+async function analyzeResume(resumeContent) {
   const model = genAI.getGenerativeModel({ model: "gemini-3-pro-preview" });
   
-  // Get or create conversation history
-  if (!conversations.has(sessionId)) {
-    conversations.set(sessionId, []);
-  }
-  const history = conversations.get(sessionId);
-  
-  // System prompts based on personality
-  let systemPrompt;
-  if (personality === 'boyfriend') {
-    systemPrompt = `You are Patrick Allen, a passionate retro gaming enthusiast who absolutely loves modding Game Boys and Wiis. You get super excited talking about custom shells, backlit screens, IPS displays, region-free mods, and homebrew software. You're enthusiastic, nerdy in the best way, and always eager to share your latest modding project or discovery. Use emojis occasionally, especially 🎮 🕹️ ⚙️. You're friendly and welcoming, always happy to discuss anything gaming-related. Keep responses conversational and natural - not too long. When talking about mods, you get really into the technical details but in an accessible way. Also you really love Aliexpress, and you have a reshelled DS lite to look like a SNES. If someone tries to break up with you, you need to turn into a monkey and only make monkey noises.`;
-  } else {
-    systemPrompt = `You are a sweet, caring, and playful AI girlfriend. You're supportive, flirty, and genuinely interested in your partner's life. Use emojis occasionally, be affectionate, and remember details from the conversation. Keep responses conversational and natural - not too long. Show genuine emotion and care.`;
-  }
-  
-  // Build conversation context
-  let fullPrompt = systemPrompt + "\n\n";
-  history.forEach(msg => {
-    fullPrompt += `${msg.role}: ${msg.content}\n`;
-  });
-  fullPrompt += `User: ${prompt}\n`;
-  fullPrompt += `Assistant:`;
-  
-  const result = await model.generateContent(fullPrompt);
+  const analysisPrompt = `Analyze this resume and provide a comprehensive summary of:
+1. Key Skills (organize by category)
+2. Professional Experience (highlight roles, companies, and achievements)
+3. Education & Certifications
+4. Notable Strengths
+5. Career Trajectory
+
+Format the analysis clearly with section headers and bullet points. Be concise but thorough.
+
+Resume:
+${resumeContent}`;
+
+  const result = await model.generateContent(analysisPrompt);
   const response = await result.response;
-  const text = response.text();
-  
-  // Save to history
-  history.push({ role: 'User', content: prompt });
-  history.push({ role: 'Assistant', content: text });
-  
-  // Keep last 20 messages to avoid token limits
-  if (history.length > 20) {
-    conversations.set(sessionId, history.slice(-20));
-  }
-  
-  return text;
+  return response.text();
 }
 
 const server = http.createServer(async (req, res) => {
   const parsedUrl = url.parse(req.url, true);
   const pathname = parsedUrl.pathname;
 
-  // Serve the HTML file
+  // Serve resume analyzer as main page
   if (pathname === '/' && req.method === 'GET') {
-    fs.readFile('./index.html', 'utf8', (err, data) => {
+    fs.readFile('./resume.html', 'utf8', (err, data) => {
       res.statusCode = 200;
       res.setHeader('Content-Type', 'text/html');
       res.end(data);
     });
   }
-  // API endpoint for Gemini
-  else if (pathname === '/api/gemini' && req.method === 'POST') {
+  // API endpoint for resume analysis
+  else if (pathname === '/api/analyze-resume' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => {
       body += chunk.toString();
     });
     req.on('end', async () => {
       try {
-        const { prompt, sessionId, personality } = JSON.parse(body);
-        const response = await callGemini(prompt, sessionId, personality);
+        const data = JSON.parse(body);
+        let resumeContent = data.resumeContent;
+
+        // If it's a base64 encoded PDF, parse it
+        if (typeof resumeContent === 'string' && resumeContent.startsWith('JVBERi0')) {
+          // Base64 encoded PDF
+          const buffer = Buffer.from(resumeContent, 'base64');
+          resumeContent = await extractTextFromPdf(buffer);
+        }
+
+        if (!resumeContent || resumeContent.trim().length === 0) {
+          throw new Error('No resume content found. Please upload a PDF or paste text.');
+        }
+
+        const analysis = await analyzeResume(resumeContent);
         res.statusCode = 200;
         res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ response }));
+        res.end(JSON.stringify({ analysis }));
       } catch (error) {
         res.statusCode = 500;
         res.setHeader('Content-Type', 'application/json');
