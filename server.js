@@ -2,14 +2,13 @@ const http = require('http');
 const fs = require('fs');
 const url = require('url');
 require('dotenv').config();
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { PDFParse } = require('pdf-parse');
 
 const hostname = '0.0.0.0';
 const port = process.env.PORT || 3001;
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API);
-console.log("API Key:", process.env.GEMINI_API?.slice(0, 4) + "...");
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 async function extractTextFromPdf(pdfBuffer) {
   const parser = new PDFParse({ data: pdfBuffer });
@@ -18,8 +17,10 @@ async function extractTextFromPdf(pdfBuffer) {
 }
 
 async function analyzeResume(resumeContent) {
-  const model = genAI.getGenerativeModel({ model: "gemini-3-pro-preview" });
-  
+  if (!OPENROUTER_API_KEY) {
+    throw new Error('OPENROUTER_API_KEY is not set in environment variables');
+  }
+
   const analysisPrompt = `Analyze this resume and provide a comprehensive summary of:
 1. Key Skills (organize by category)
 2. Professional Experience (highlight roles, companies, and achievements)
@@ -32,9 +33,32 @@ Format the analysis clearly with section headers and bullet points. Be concise b
 Resume:
 ${resumeContent}`;
 
-  const result = await model.generateContent(analysisPrompt);
-  const response = await result.response;
-  return response.text();
+  const response = await fetch(OPENROUTER_API_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': process.env.OPENROUTER_HTTP_REFERER || 'http://localhost:3001',
+      'X-Title': process.env.OPENROUTER_X_TITLE || 'Resume Analyzer'
+    },
+    body: JSON.stringify({
+      model: process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini',
+      messages: [
+        {
+          role: 'user',
+          content: analysisPrompt
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(`OpenRouter API error: ${errorData.error?.message || response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0].message.content;
 }
 
 const server = http.createServer(async (req, res) => {
