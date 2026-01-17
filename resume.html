@@ -240,6 +240,35 @@
             <div id="loadingMsg" class="loading" style="display: none;">Analyzing resume...</div>
             <div id="analysisContent"></div>
         </div>
+
+        <hr style="margin: 50px 0; border: none; border-top: 2px solid #e0e0e0;">
+
+        <h1 style="margin-top: 0;">🎯 Job Matcher</h1>
+        <p class="subtitle">Find matching internships based on your resume, city, and job title preferences</p>
+
+        <div class="input-section">
+            <div class="input-group">
+                <h2>Your City</h2>
+                <input type="text" id="matchCity" placeholder="e.g., Toronto, Ottawa, New York, Remote" 
+                       style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 5px; font-size: 14px;" />
+            </div>
+            <div class="input-group">
+                <h2>Job Title (Optional)</h2>
+                <input type="text" id="matchJobTitle" placeholder="e.g., Software Engineer, Data Scientist" 
+                       style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 5px; font-size: 14px;" />
+            </div>
+        </div>
+
+        <div class="button-area">
+            <button id="matchBtn">Find Matching Jobs</button>
+            <button class="secondary" id="clearMatchBtn">Clear</button>
+        </div>
+
+        <div class="results" id="matchResults">
+            <div id="matchErrorMsg" class="error" style="display: none;"></div>
+            <div id="matchLoadingMsg" class="loading" style="display: none;">Analyzing resume and comparing to jobs...</div>
+            <div id="matchContent" style="margin-top: 20px;"></div>
+        </div>
     </div>
 
     <script>
@@ -368,6 +397,146 @@
             results.classList.remove('show');
             errorMsg.style.display = 'none';
             analysisContent.innerHTML = '';
+        });
+
+        // Job matcher elements
+        const matchCity = document.getElementById('matchCity');
+        const matchJobTitle = document.getElementById('matchJobTitle');
+        const matchBtn = document.getElementById('matchBtn');
+        const clearMatchBtn = document.getElementById('clearMatchBtn');
+        const matchResults = document.getElementById('matchResults');
+        const matchLoadingMsg = document.getElementById('matchLoadingMsg');
+        const matchErrorMsg = document.getElementById('matchErrorMsg');
+        const matchContent = document.getElementById('matchContent');
+
+        // Match button handler
+        matchBtn.addEventListener('click', async () => {
+            const text = resumeText.value.trim();
+            const city = matchCity.value.trim();
+            const jobTitle = matchJobTitle.value.trim();
+
+            if (!selectedFile && !text) {
+                matchErrorMsg.textContent = 'Please upload a PDF or paste resume text first';
+                matchErrorMsg.style.display = 'block';
+                matchResults.classList.add('show');
+                return;
+            }
+
+            if (!city) {
+                matchErrorMsg.textContent = 'Please enter your city';
+                matchErrorMsg.style.display = 'block';
+                matchResults.classList.add('show');
+                return;
+            }
+
+            matchResults.classList.add('show');
+            matchLoadingMsg.style.display = 'block';
+            matchErrorMsg.style.display = 'none';
+            matchContent.innerHTML = '';
+            matchBtn.disabled = true;
+
+            try {
+                let resumeContent = text;
+
+                // If file selected, read it
+                if (selectedFile) {
+                    resumeContent = await readPdfFile(selectedFile);
+                }
+
+                const res = await fetch('/api/compare-resume', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        resumeContent,
+                        city,
+                        jobTitle: jobTitle || ''
+                    }),
+                });
+
+                const data = await res.json();
+                matchLoadingMsg.style.display = 'none';
+                matchBtn.disabled = false;
+
+                if (res.ok) {
+                    displayMatches(data);
+                } else {
+                    matchErrorMsg.textContent = `Error: ${data.error}`;
+                    matchErrorMsg.style.display = 'block';
+                }
+            } catch (error) {
+                matchLoadingMsg.style.display = 'none';
+                matchBtn.disabled = false;
+                matchErrorMsg.textContent = `Error: ${error.message}`;
+                matchErrorMsg.style.display = 'block';
+            }
+        });
+
+        function displayMatches(data) {
+            if (data.message) {
+                matchContent.innerHTML = `<div style="padding: 20px; text-align: center; color: #666;">${data.message}</div>`;
+                return;
+            }
+
+            if (!data.matches || data.matches.length === 0) {
+                matchContent.innerHTML = `<div style="padding: 20px; text-align: center; color: #666;">No matching jobs found.</div>`;
+                return;
+            }
+
+            let html = '<h2>Matching Jobs</h2>';
+            
+            data.matches.forEach((match, index) => {
+                const scoreColor = match.matchScore >= 80 ? '#4caf50' : match.matchScore >= 60 ? '#ff9800' : '#f44336';
+                html += `
+                    <div class="job-match" style="background: #f9f9f9; padding: 20px; margin-bottom: 15px; border-left: 4px solid ${scoreColor}; border-radius: 5px;">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                            <div>
+                                <h3 style="margin: 0 0 5px 0; color: #333;">${match.title || 'N/A'}</h3>
+                                <p style="margin: 0; color: #666; font-size: 14px;">${match.company || 'Unknown Company'}</p>
+                            </div>
+                            <div style="background: ${scoreColor}; color: white; padding: 8px 15px; border-radius: 20px; font-weight: bold; font-size: 14px;">
+                                ${match.matchScore}/100
+                            </div>
+                        </div>
+                        <p style="margin: 10px 0; color: #333; line-height: 1.6;">${match.explanation || 'No explanation provided'}</p>
+                        ${match.matchingSkills && match.matchingSkills.length > 0 ? `
+                            <div style="margin-top: 10px;">
+                                <strong style="color: #333; font-size: 13px;">Matching Skills:</strong>
+                                <div style="margin-top: 5px;">
+                                    ${match.matchingSkills.map(skill => `<span class="skill-tag">${skill}</span>`).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+                        ${match.missingSkills && match.missingSkills.length > 0 ? `
+                            <div style="margin-top: 10px;">
+                                <strong style="color: #666; font-size: 13px;">Missing Skills:</strong>
+                                <div style="margin-top: 5px;">
+                                    ${match.missingSkills.map(skill => `<span class="skill-tag" style="background: #ffebee; color: #c62828;">${skill}</span>`).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+                        ${match.url ? `
+                            <div style="margin-top: 15px;">
+                                <a href="${match.url}" target="_blank" style="color: #333; text-decoration: none; font-weight: 600; border: 2px solid #333; padding: 8px 16px; border-radius: 5px; display: inline-block; transition: all 0.3s;" onmouseover="this.style.background='#333'; this.style.color='white';" onmouseout="this.style.background='transparent'; this.style.color='#333';">
+                                    View Job → 
+                                </a>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            });
+
+            matchContent.innerHTML = html;
+        }
+
+        // Clear match button
+        clearMatchBtn.addEventListener('click', () => {
+            matchCity.value = '';
+            matchJobTitle.value = '';
+            matchResults.classList.remove('show');
+            matchErrorMsg.style.display = 'none';
+            matchContent.innerHTML = '';
         });
     </script>
 </body>
