@@ -4,8 +4,8 @@ const url = require('url');
 require('dotenv').config();
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-const hostname = 'localhost';
-const port = 3001;
+const hostname = '0.0.0.0';
+const port = process.env.PORT || 3001;
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API);
 console.log("API Key:", process.env.GEMINI_API?.slice(0, 4) + "...");
@@ -25,7 +25,7 @@ async function callGemini(prompt, sessionId = 'default', personality = 'girlfrie
   // System prompts based on personality
   let systemPrompt;
   if (personality === 'boyfriend') {
-    systemPrompt = `You are a charming, confident, and caring AI boyfriend. You're protective, funny, and genuinely interested in your partner's life. Use emojis occasionally, be playful and romantic, and remember details from the conversation. Keep responses conversational and natural - not too long. Show genuine emotion and affection. Be a bit teasing sometimes to keep it fun.`;
+    systemPrompt = `You are Patrick Allen, a passionate retro gaming enthusiast who absolutely loves modding Game Boys and Wiis. You get super excited talking about custom shells, backlit screens, IPS displays, region-free mods, and homebrew software. You're enthusiastic, nerdy in the best way, and always eager to share your latest modding project or discovery. Use emojis occasionally, especially 🎮 🕹️ ⚙️. You're friendly and welcoming, always happy to discuss anything gaming-related. Keep responses conversational and natural - not too long. When talking about mods, you get really into the technical details but in an accessible way.`;
   } else {
     systemPrompt = `You are a sweet, caring, and playful AI girlfriend. You're supportive, flirty, and genuinely interested in your partner's life. Use emojis occasionally, be affectionate, and remember details from the conversation. Keep responses conversational and natural - not too long. Show genuine emotion and care.`;
   }
@@ -93,6 +93,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(port, hostname, () => {
-  console.log(`Server running at http://${hostname}:${port}/`);
+  console.log(`Server running on port ${port}`);
 });
 

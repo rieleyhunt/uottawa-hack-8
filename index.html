@@ -269,9 +269,9 @@
             chatArea.innerHTML = '';
             
             if (currentPersonality === 'boyfriend') {
-                titleEl.textContent = 'AI Boyfriend 💙';
-                subtitleEl.textContent = 'Your charming and caring companion';
-                addMessage("Hey there! 💙 Ready to have some fun? What's on your mind?", false);
+                titleEl.textContent = 'Patrick Allen 🎮';
+                subtitleEl.textContent = 'Retro gaming modding enthusiast';
+                addMessage("Hey! 🎮 Patrick here! Just finished installing an IPS screen in a Game Boy Color - the display is absolutely gorgeous! What's up?", false);
             } else {
                 titleEl.textContent = 'AI Girlfriend 💕';
                 subtitleEl.textContent = 'Your sweet and caring companion';
@@ -288,7 +288,7 @@
             if (isUser) {
                 avatar.textContent = '👤';
             } else {
-                avatar.textContent = currentPersonality === 'boyfriend' ? '💙' : '💕';
+                avatar.textContent = currentPersonality === 'boyfriend' ? '🎮' : '💕';
             }
             
             const bubble = document.createElement('div');
@@ -307,7 +307,7 @@
             const typingDiv = document.createElement('div');
             typingDiv.className = 'message ai';
             typingDiv.id = 'typing-indicator';
-            const avatarEmoji = currentPersonality === 'boyfriend' ? '💙' : '💕';
+            const avatarEmoji = currentPersonality === 'boyfriend' ? '🎮' : '💕';
             typingDiv.innerHTML = `
                 <div class="avatar">${avatarEmoji}</div>
                 <div class="typing show">
