@@ -64,7 +64,8 @@ async function extractStream(url, prompt) {
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(`Tavily API error: ${errorData.error?.message || res.statusText}`);
+    console.error('[extractStream] Tavily error payload:', errorData);
+    throw new Error(`Tavily API error: ${JSON.stringify(errorData) || res.statusText}`);
   }
 
   const data = await res.json();
@@ -163,7 +164,8 @@ async function tavilyExtractJobsFromGithubReadme(url) {
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(`Tavily jobs API error: ${errorData.error?.message || res.statusText}`);
+    console.error('[tavilyExtractJobsFromGithubReadme] Tavily error payload:', errorData);
+    throw new Error(`Tavily jobs API error: ${JSON.stringify(errorData) || res.statusText}`);
   }
 
   const data = await res.json();
