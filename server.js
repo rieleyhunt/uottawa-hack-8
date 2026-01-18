@@ -218,6 +218,104 @@ Rules:
   return jobs;
 }
 
+// Fetch README.md and extract up to maxUrls unique job posting URLs
+async function fetchGithubReadmeJobUrls(readmeUrl, maxUrls = 200) {
+  console.log('[fetchGithubReadmeJobUrls] Fetching README from:', readmeUrl);
+
+  const res = await fetch(readmeUrl);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch README: ${res.status} ${res.statusText}`);
+  }
+
+  const text = await res.text();
+  console.log('[fetchGithubReadmeJobUrls] README length:', text.length);
+
+  const urlSet = new Set();
+  const linkRegex = /\]\((https?:\/\/[^)]+)\)/g;
+  let match;
+
+  while ((match = linkRegex.exec(text)) !== null) {
+    const foundUrl = match[1];
+    if (!foundUrl) continue;
+    // Skip internal GitHub links; keep external job posting URLs
+    if (foundUrl.includes('github.com/SimplifyJobs')) continue;
+
+    if (!urlSet.has(foundUrl)) {
+      urlSet.add(foundUrl);
+      if (urlSet.size >= maxUrls) break;
+    }
+  }
+
+  const urls = Array.from(urlSet);
+  console.log('[fetchGithubReadmeJobUrls] Extracted job URLs count:', urls.length);
+  return urls;
+}
+
+// Summarize a single job posting page into a job object using Tavily
+async function summarizeJobWithTavily(jobUrl) {
+  if (!TAVILY_API_KEY) {
+    throw new Error('TAVILY_API_KEY is not set in environment variables');
+  }
+
+  let query = `Job posting at ${jobUrl}. Extract STRICT JSON {"title":string,"company":string,"location":string,"city":string,"url":string,"description":string,"skills":string[]}.`;
+  if (query.length > TAVILY_MAX_QUERY_LENGTH) {
+    query = query.slice(0, TAVILY_MAX_QUERY_LENGTH);
+  }
+
+  console.log('[summarizeJobWithTavily] Tavily query length:', query.length, 'for URL:', jobUrl);
+
+  const res = await fetch(TAVILY_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      api_key: TAVILY_API_KEY,
+      query,
+      search_depth: 'advanced',
+      include_answer: true,
+      include_raw_content: true,
+      max_results: 3
+    })
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+    console.error('[summarizeJobWithTavily] Tavily error payload:', errorData);
+    return null;
+  }
+
+  const data = await res.json();
+  const answer = typeof data.answer === 'string' ? data.answer : JSON.stringify(data);
+
+  console.log('[summarizeJobWithTavily] Raw Tavily answer (first 1000 chars):', answer.slice(0, 1000));
+
+  let parsed;
+  try {
+    parsed = extractJsonFromText(answer);
+  } catch (err) {
+    console.error('[summarizeJobWithTavily] Failed to parse Tavily JSON for URL', jobUrl, err);
+    return null;
+  }
+
+  let job = parsed;
+  if (Array.isArray(parsed.jobs) && parsed.jobs.length > 0) {
+    job = parsed.jobs[0];
+  }
+
+  if (!job || typeof job !== 'object') {
+    console.warn('[summarizeJobWithTavily] Parsed result is not a job object for URL', jobUrl);
+    return null;
+  }
+
+  // Ensure URL field is populated
+  if (!job.url) {
+    job.url = jobUrl;
+  }
+
+  return job;
+}
+
 // Extract text from PDF (using your original PDFParse helper)
 async function extractTextFromPdf(pdfBuffer) {
   const parser = new PDFParse({ data: pdfBuffer });
@@ -336,19 +434,28 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        const githubUrl = 'https://github.com/SimplifyJobs/Summer2026-Internships/blob/dev/README.md?plain=1';
+        const readmeUrl = 'https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/README.md';
 
-        console.log('[refresh-jobs] Starting refresh for URL (Tavily direct JSON):', githubUrl);
+        console.log('[refresh-jobs] Starting refresh using README URL:', readmeUrl);
 
-        const jobs = await tavilyExtractJobsFromGithubReadme(githubUrl);
+        const jobUrls = await fetchGithubReadmeJobUrls(readmeUrl, 200);
+        console.log('[refresh-jobs] Total job URLs to process:', jobUrls.length);
 
-        console.log('[refresh-jobs] jobs array length from Tavily:', jobs.length);
-        if (jobs.length > 0) {
-          console.log('[refresh-jobs] First job sample:', JSON.stringify(jobs[0], null, 2));
+        const jobs = [];
+        for (let i = 0; i < jobUrls.length; i++) {
+          const jobUrl = jobUrls[i];
+          console.log(`[refresh-jobs] Summarizing job ${i + 1}/${jobUrls.length}:`, jobUrl);
+          const job = await summarizeJobWithTavily(jobUrl);
+          if (job) {
+            jobs.push(job);
+          } else {
+            console.warn('[refresh-jobs] Skipped job due to summarization failure for URL:', jobUrl);
+          }
         }
 
+        console.log('[refresh-jobs] Final jobs array length from Tavily per-URL:', jobs.length);
         if (!jobs.length) {
-          throw new Error('No jobs found in Tavily answer');
+          throw new Error('No jobs could be summarized from job URLs');
         }
 
         // Group jobs by normalized city
