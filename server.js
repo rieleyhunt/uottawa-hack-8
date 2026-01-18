@@ -220,6 +220,7 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         // Optional simple auth token
+        console.log('[refresh-jobs] Raw request body:', body || '(empty)');
         const data = body ? JSON.parse(body) : {};
         const authToken = data.authToken;
         if (process.env.REFRESH_JOBS_TOKEN && authToken !== process.env.REFRESH_JOBS_TOKEN) {
@@ -230,6 +231,8 @@ const server = http.createServer(async (req, res) => {
         }
 
         const githubUrl = 'https://github.com/SimplifyJobs/Summer2026-Internships?tab=readme-ov-file';
+
+        console.log('[refresh-jobs] Starting refresh for URL:', githubUrl);
 
         const extractPrompt = `You are an expert data extractor.
 From this GitHub internships listing page and any job links it references, extract a concise structured list of internship jobs.
@@ -254,7 +257,12 @@ Requirements:
 - skills should be a short list of key technologies or skills.
 - Include as many jobs as you can, but keep descriptions reasonably short.`;
 
+  console.log('[refresh-jobs] Extract prompt (first 500 chars):', extractPrompt.slice(0, 500));
+
         const yellowCakeResult = await extractStream(githubUrl, extractPrompt);
+
+  console.log('[refresh-jobs] YellowCake raw result length:', yellowCakeResult ? yellowCakeResult.length : 0);
+  console.log('[refresh-jobs] YellowCake raw result (first 5000 chars):', yellowCakeResult ? yellowCakeResult.slice(0, 5000) : '(null/undefined)');
 
         const processingPrompt = `You are a helpful assistant.
 You will receive raw extracted text from an internships listing page.
@@ -278,9 +286,20 @@ Rules:
 - Ensure the JSON parses successfully in JavaScript.
 - city should be a simple city name (no country, no state codes).`;
 
+        console.log('[refresh-jobs] Processing prompt (first 500 chars):', processingPrompt.slice(0, 500));
+
         const geminiResult = await processWithGemini(yellowCakeResult, processingPrompt);
+        console.log('[refresh-jobs] Gemini raw result length:', geminiResult ? geminiResult.length : 0);
+        console.log('[refresh-jobs] Gemini raw result (first 5000 chars):', geminiResult ? geminiResult.slice(0, 5000) : '(null/undefined)');
+
         const parsed = extractJsonFromText(geminiResult);
+        console.log('[refresh-jobs] Parsed JSON keys:', parsed && typeof parsed === 'object' ? Object.keys(parsed) : '(non-object)');
+
         const jobs = Array.isArray(parsed.jobs) ? parsed.jobs : [];
+        console.log('[refresh-jobs] jobs array length:', jobs.length);
+        if (jobs.length > 0) {
+          console.log('[refresh-jobs] First job sample:', JSON.stringify(jobs[0], null, 2));
+        }
 
         if (!jobs.length) {
           throw new Error('No jobs found in extracted data');
@@ -308,6 +327,11 @@ Rules:
           });
         }
 
+        console.log('[refresh-jobs] Grouped jobs by city. Total cities:', byCity.size);
+        for (const [cityKey, value] of byCity.entries()) {
+          console.log('[refresh-jobs] City group:', cityKey, 'displayName:', value.city, 'jobCount:', value.jobs.length);
+        }
+
         // Clear existing city jobs collection and insert new data
         await CityJobs.deleteMany({});
 
@@ -322,8 +346,11 @@ Rules:
         }
 
         if (docs.length) {
+          console.log('[refresh-jobs] Inserting documents into MongoDB. Total docs:', docs.length);
           await CityJobs.insertMany(docs);
         }
+
+        console.log('[refresh-jobs] Refresh completed successfully. totalCities:', docs.length, 'totalJobs:', jobs.length);
 
         res.statusCode = 200;
         res.setHeader('Content-Type', 'application/json');
