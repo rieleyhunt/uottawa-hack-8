@@ -434,7 +434,7 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        const readmeUrl = 'https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/README.md';
+        const readmeUrl = 'https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/refs/heads/dev/README.md';
 
         console.log('[refresh-jobs] Starting refresh using README URL:', readmeUrl);
 
