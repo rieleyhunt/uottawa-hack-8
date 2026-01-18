@@ -275,10 +275,11 @@ async function summarizeJobWithTavily(jobUrl) {
     body: JSON.stringify({
       api_key: TAVILY_API_KEY,
       query,
-      search_depth: 'advanced',
+      // Lighter settings for speed: shallow search, skip raw content, fewer results
+      search_depth: 'basic',
       include_answer: true,
-      include_raw_content: true,
-      max_results: 3
+      include_raw_content: false,
+      max_results: 2
     })
   });
 
