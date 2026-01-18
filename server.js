@@ -175,8 +175,42 @@ async function tavilyExtractJobsFromGithubReadme(url) {
   const answer = typeof data.answer === 'string' ? data.answer : JSON.stringify(data);
 
   console.log('[tavilyExtractJobsFromGithubReadme] Raw Tavily answer (first 5000 chars):', answer.slice(0, 5000));
+  
+  const processingPrompt = `You are an expert internships data formatter.
 
-  const parsed = extractJsonFromText(answer);
+You will receive text about internship listings scraped from a GitHub README and job posting pages.
+Convert it into STRICT JSON with this exact schema:
+{
+  "jobs": [
+    {
+      "title": string,
+      "company": string,
+      "location": string,
+      "city": string,
+      "url": string,
+      "description": string,
+      "skills": string[]
+    }
+  ]
+}
+
+Rules:
+- Respond with JSON ONLY, no explanations.
+- Ensure the JSON parses successfully in JavaScript.
+- city should be a simple city name (no country, no state codes).`;
+
+  const geminiInput = `${processingPrompt}\n\nTavily answer:\n${answer}`;
+  const geminiResult = await callGemini(geminiInput);
+  console.log('[tavilyExtractJobsFromGithubReadme] Gemini raw result (first 5000 chars):', geminiResult.slice(0, 5000));
+
+  let parsed;
+  try {
+    parsed = extractJsonFromText(geminiResult);
+  } catch (err) {
+    console.error('[tavilyExtractJobsFromGithubReadme] Failed to parse Gemini JSON:', err);
+    throw new Error(`Failed to parse jobs JSON from Gemini: ${err.message}`);
+  }
+
   const jobs = Array.isArray(parsed.jobs) ? parsed.jobs : [];
   console.log('[tavilyExtractJobsFromGithubReadme] Parsed jobs length:', jobs.length);
 
