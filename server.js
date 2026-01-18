@@ -230,32 +230,30 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        const githubUrl = 'https://github.com/SimplifyJobs/Summer2026-Internships?tab=readme-ov-file';
+        const githubUrl = 'https://github.com/SimplifyJobs/Summer2026-Internships/blob/dev/README.md?plain=1';
 
         console.log('[refresh-jobs] Starting refresh for URL:', githubUrl);
 
-        const extractPrompt = `You are an expert data extractor.
-From this GitHub internships listing page and any job links it references, extract a concise structured list of internship jobs.
+        const extractPrompt = `You are an expert internships scraper.
 
-Return ONLY valid JSON in the following format:
-{
-  "jobs": [
-    {
-      "title": "Software Engineer Intern",
-      "company": "Example Corp",
-      "location": "Toronto, ON, Canada",
-      "city": "Toronto",
-      "url": "https://careers.example.com/job/123",
-      "description": "Short summary of responsibilities and requirements.",
-      "skills": ["Python", "JavaScript", "SQL"]
-    }
-  ]
-}
+You are given the plain-text README of the SimplifyJobs Summer 2026 internships repository.
+This README contains a markdown table with many internship rows. Each row includes a company, role, location, and a URL to the job posting.
 
-Requirements:
-- city must be a simple city name (e.g., "Toronto", "Ottawa", "New York").
-- skills should be a short list of key technologies or skills.
-- Include as many jobs as you can, but keep descriptions reasonably short.`;
+Your job:
+1. Parse the README content.
+2. For every internship row that has a job URL, follow the link and open the job posting page.
+3. For every job posting you can access, extract a concise summary with at least the following fields:
+   - Job title
+   - Company
+   - Location (as shown on the posting, e.g. "Toronto, ON, Canada")
+   - A short summary of responsibilities and requirements (2-4 sentences or bullet points)
+   - A list of tools/skills/technologies required or preferred (e.g. ["Python", "React", "SQL"])
+   - The URL of the job posting
+
+Output format:
+- Return a clear, structured plain-text list of jobs.
+- For each job, clearly label the fields like "Title:", "Company:", "Location:", "URL:", "Summary:", "Skills:" so another model can reliably parse it.
+- Include as many jobs as you can, but keep each job summary concise.`;
 
   console.log('[refresh-jobs] Extract prompt (first 500 chars):', extractPrompt.slice(0, 500));
 
