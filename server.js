@@ -161,7 +161,7 @@ async function tavilyExtractJobsFromGithubReadme(url) {
       search_depth: 'advanced',
       include_answer: true,
       include_raw_content: false,
-      max_results: 30
+      max_results: 50
     })
   });
 
@@ -197,7 +197,8 @@ Convert it into STRICT JSON with this exact schema:
 Rules:
 - Respond with JSON ONLY, no explanations.
 - Ensure the JSON parses successfully in JavaScript.
-- city should be a simple city name (no country, no state codes).`;
+- city should be a simple city name (no country, no state codes).
+- Include as many distinct internship jobs as possible, up to 200 entries.`;
 
   const geminiInput = `${processingPrompt}\n\nTavily answer:\n${answer}`;
   const geminiResult = await callGemini(geminiInput);
