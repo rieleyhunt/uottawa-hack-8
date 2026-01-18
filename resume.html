@@ -283,12 +283,35 @@
         const analysisContent = document.getElementById('analysisContent');
 
         let selectedFile = null;
+        let pastedResumeText = null; // Store pasted text separately
 
         // File input handling
         fileInput.addEventListener('change', (e) => {
             selectedFile = e.target.files[0];
             if (selectedFile) {
                 fileName.textContent = `✓ ${selectedFile.name}`;
+                pastedResumeText = null; // Clear pasted text when file is uploaded
+            }
+        });
+
+        // Paste text handling with confirmation
+        resumeText.addEventListener('blur', () => {
+            const text = resumeText.value.trim();
+            if (text) {
+                pastedResumeText = text;
+                resumeText.value = '✓ Resume text uploaded';
+                resumeText.style.color = '#4caf50';
+                resumeText.style.fontWeight = 'bold';
+                selectedFile = null; // Clear file when text is pasted
+                fileName.textContent = '';
+            }
+        });
+
+        resumeText.addEventListener('focus', () => {
+            if (resumeText.value === '✓ Resume text uploaded') {
+                resumeText.value = pastedResumeText || '';
+                resumeText.style.color = '';
+                resumeText.style.fontWeight = '';
             }
         });
 
@@ -314,7 +337,7 @@
 
         // Analyze button
         analyzeBtn.addEventListener('click', async () => {
-            const text = resumeText.value.trim();
+            const text = pastedResumeText || resumeText.value.trim();
 
             if (!selectedFile && !text) {
                 errorMsg.textContent = 'Please upload a PDF or paste resume text';
@@ -391,8 +414,11 @@
         // Clear button
         clearBtn.addEventListener('click', () => {
             selectedFile = null;
+            pastedResumeText = null;
             fileInput.value = '';
             resumeText.value = '';
+            resumeText.style.color = '';
+            resumeText.style.fontWeight = '';
             fileName.textContent = '';
             results.classList.remove('show');
             errorMsg.style.display = 'none';
@@ -411,7 +437,7 @@
 
         // Match button handler
         matchBtn.addEventListener('click', async () => {
-            const text = resumeText.value.trim();
+            const text = pastedResumeText || resumeText.value.trim();
             const city = matchCity.value.trim();
             const jobTitle = matchJobTitle.value.trim();
 
