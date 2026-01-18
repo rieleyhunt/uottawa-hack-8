@@ -653,7 +653,7 @@ Rules:
 - matchScore is between 0 and 100.
 - Sort matches by matchScore descending.
 - Only include jobs that are reasonably relevant to the resume.
-- If nothing matches well, return an empty matches array.`;
+- If nothing matches well, then at least return some jobs that are similar.`;
 
         const result = await callGemini(processPrompt);
         const comparison = extractJsonFromText(result);
