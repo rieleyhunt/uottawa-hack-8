@@ -198,7 +198,8 @@ Rules:
 - Respond with JSON ONLY, no explanations.
 - Ensure the JSON parses successfully in JavaScript.
 - city should be a simple city name (no country, no state codes).
-- Include as many distinct internship jobs as possible, up to 200 entries.`;
+- Include as many distinct internship jobs as possible, up to 200 entries.
+- skills must be specific technologies, languages, frameworks, or tools (e.g. "Python", "React", "AWS", "PostgreSQL"), not soft skills like "communication" or "teamwork".`;
 
   const geminiInput = `${processingPrompt}\n\nTavily answer:\n${answer}`;
   const geminiResult = await callGemini(geminiInput);
@@ -231,11 +232,12 @@ async function fetchGithubReadmeJobUrls(readmeUrl, maxUrls = 200) {
   console.log('[fetchGithubReadmeJobUrls] README length:', text.length);
 
   const urlSet = new Set();
-  const linkRegex = /\]\((https?:\/\/[^)]+)\)/g;
+  // Match markdown links like [text](https://url) and [text](<https://url>)
+  const linkRegex = /\]\((<?)(https?:\/\/[^>)]+)(>?)\)/g;
   let match;
 
   while ((match = linkRegex.exec(text)) !== null) {
-    const foundUrl = match[1];
+    const foundUrl = match[2];
     if (!foundUrl) continue;
     // Skip internal GitHub links; keep external job posting URLs
     if (foundUrl.includes('github.com/SimplifyJobs')) continue;
@@ -248,6 +250,7 @@ async function fetchGithubReadmeJobUrls(readmeUrl, maxUrls = 200) {
 
   const urls = Array.from(urlSet);
   console.log('[fetchGithubReadmeJobUrls] Extracted job URLs count:', urls.length);
+  console.log('[fetchGithubReadmeJobUrls] Sample URLs:', urls.slice(0, 10));
   return urls;
 }
 
@@ -307,7 +310,8 @@ Convert it into STRICT JSON with this exact schema:
 Rules:
 - Respond with JSON ONLY, no explanations.
 - Ensure the JSON parses successfully in JavaScript.
-- city should be a simple city name (no country, no state codes).`;
+- city should be a simple city name (no country, no state codes).
+- skills must be specific technologies, languages, frameworks, or tools (e.g. "Python", "React", "AWS", "PostgreSQL"), not soft skills like "communication" or "teamwork".`;
 
   const geminiInput = `${processingPrompt}\n\nTavily answer for job page:\n${answer}`;
   const geminiResult = await callGemini(geminiInput);
