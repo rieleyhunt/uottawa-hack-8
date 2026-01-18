@@ -290,14 +290,38 @@ async function summarizeJobWithTavily(jobUrl) {
 
   console.log('[summarizeJobWithTavily] Raw Tavily answer (first 1000 chars):', answer.slice(0, 1000));
 
+  const processingPrompt = `You are an expert internships data formatter.
+
+You will receive text about a single internship job posting.
+Convert it into STRICT JSON with this exact schema:
+{
+  "title": string,
+  "company": string,
+  "location": string,
+  "city": string,
+  "url": string,
+  "description": string,
+  "skills": string[]
+}
+
+Rules:
+- Respond with JSON ONLY, no explanations.
+- Ensure the JSON parses successfully in JavaScript.
+- city should be a simple city name (no country, no state codes).`;
+
+  const geminiInput = `${processingPrompt}\n\nTavily answer for job page:\n${answer}`;
+  const geminiResult = await callGemini(geminiInput);
+  console.log('[summarizeJobWithTavily] Gemini raw result (first 1000 chars):', geminiResult.slice(0, 1000));
+
   let parsed;
   try {
-    parsed = extractJsonFromText(answer);
+    parsed = extractJsonFromText(geminiResult);
   } catch (err) {
-    console.error('[summarizeJobWithTavily] Failed to parse Tavily JSON for URL', jobUrl, err);
+    console.error('[summarizeJobWithTavily] Failed to parse Gemini JSON for URL', jobUrl, err);
     return null;
   }
 
+  // Gemini may return either a single job object or { jobs: [job] }
   let job = parsed;
   if (Array.isArray(parsed.jobs) && parsed.jobs.length > 0) {
     job = parsed.jobs[0];
@@ -308,7 +332,6 @@ async function summarizeJobWithTavily(jobUrl) {
     return null;
   }
 
-  // Ensure URL field is populated
   if (!job.url) {
     job.url = jobUrl;
   }
