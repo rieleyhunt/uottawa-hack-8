@@ -126,6 +126,58 @@ async function processWithGemini(extractedResult, processingPrompt) {
   return await callGemini(prompt);
 }
 
+// Tavily helper: directly ask for jobs JSON from a URL
+async function tavilyExtractJobsFromGithubReadme(url) {
+  if (!TAVILY_API_KEY) {
+    throw new Error('TAVILY_API_KEY is not set in environment variables');
+  }
+
+  const query = `You are an expert internships scraper.\n\n` +
+    `You are given the URL of the SimplifyJobs Summer 2026 internships README: ${url}. ` +
+    `Open this README and any job posting links it contains. ` +
+    `For every internship you can find, extract a structured job object with:\n` +
+    `- title (job title)\n` +
+    `- company\n` +
+    `- location (e.g. "Toronto, ON, Canada")\n` +
+    `- city (simple city name only, e.g. "Toronto", "Ottawa", "New York")\n` +
+    `- url (job posting URL)\n` +
+    `- description (2-4 sentence summary of responsibilities and requirements)\n` +
+    `- skills (array of key tools/technologies, e.g. ["Python", "React", "SQL"])\n\n` +
+    `Respond in STRICT JSON with this exact schema and nothing else:\n` +
+    `{"jobs":[{"title":string,"company":string,"location":string,"city":string,"url":string,"description":string,"skills":string[]}]}`;
+
+  const res = await fetch(TAVILY_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      api_key: TAVILY_API_KEY,
+      query,
+      search_depth: 'advanced',
+      include_answer: true,
+      include_raw_content: false,
+      max_results: 30
+    })
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(`Tavily jobs API error: ${errorData.error?.message || res.statusText}`);
+  }
+
+  const data = await res.json();
+  const answer = typeof data.answer === 'string' ? data.answer : JSON.stringify(data);
+
+  console.log('[tavilyExtractJobsFromGithubReadme] Raw Tavily answer (first 5000 chars):', answer.slice(0, 5000));
+
+  const parsed = extractJsonFromText(answer);
+  const jobs = Array.isArray(parsed.jobs) ? parsed.jobs : [];
+  console.log('[tavilyExtractJobsFromGithubReadme] Parsed jobs length:', jobs.length);
+
+  return jobs;
+}
+
 // Extract text from PDF (using your original PDFParse helper)
 async function extractTextFromPdf(pdfBuffer) {
   const parser = new PDFParse({ data: pdfBuffer });
@@ -225,7 +277,7 @@ const server = http.createServer(async (req, res) => {
       }
     });
   }
-  // API endpoint: refresh internships database from GitHub via Tavily + Gemini
+  // API endpoint: refresh internships database from GitHub via Tavily
   else if (pathname === '/api/refresh-jobs' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => {
@@ -246,75 +298,17 @@ const server = http.createServer(async (req, res) => {
 
         const githubUrl = 'https://github.com/SimplifyJobs/Summer2026-Internships/blob/dev/README.md?plain=1';
 
-        console.log('[refresh-jobs] Starting refresh for URL:', githubUrl);
+        console.log('[refresh-jobs] Starting refresh for URL (Tavily direct JSON):', githubUrl);
 
-        const extractPrompt = `You are an expert internships scraper.
+        const jobs = await tavilyExtractJobsFromGithubReadme(githubUrl);
 
-You are given the plain-text README of the SimplifyJobs Summer 2026 internships repository.
-This README contains a markdown table with many internship rows. Each row includes a company, role, location, and a URL to the job posting.
-
-Your job:
-1. Parse the README content.
-2. For every internship row that has a job URL, follow the link and open the job posting page.
-3. For every job posting you can access, extract a concise summary with at least the following fields:
-   - Job title
-   - Company
-   - Location (as shown on the posting, e.g. "Toronto, ON, Canada")
-   - A short summary of responsibilities and requirements (2-4 sentences or bullet points)
-   - A list of tools/skills/technologies required or preferred (e.g. ["Python", "React", "SQL"])
-   - The URL of the job posting
-
-Output format:
-- Return a clear, structured plain-text list of jobs.
-- For each job, clearly label the fields like "Title:", "Company:", "Location:", "URL:", "Summary:", "Skills:" so another model can reliably parse it.
-- Include as many jobs as you can, but keep each job summary concise.`;
-
-    console.log('[refresh-jobs] Extract prompt (first 500 chars):', extractPrompt.slice(0, 500));
-
-      const extractedResult = await extractStream(githubUrl, extractPrompt);
-
-    console.log('[refresh-jobs] Tavily raw result length:', extractedResult ? extractedResult.length : 0);
-    console.log('[refresh-jobs] Tavily raw result (first 5000 chars):', extractedResult ? extractedResult.slice(0, 5000) : '(null/undefined)');
-
-        const processingPrompt = `You are a helpful assistant.
-You will receive raw extracted text from an internships listing page.
-Convert it into STRICT JSON following this schema:
-{
-  "jobs": [
-    {
-      "title": string,
-      "company": string,
-      "location": string,
-      "city": string,
-      "url": string,
-      "description": string,
-      "skills": string[]
-    }
-  ]
-}
-
-Rules:
-- Respond with JSON ONLY, no explanations.
-- Ensure the JSON parses successfully in JavaScript.
-- city should be a simple city name (no country, no state codes).`;
-
-        console.log('[refresh-jobs] Processing prompt (first 500 chars):', processingPrompt.slice(0, 500));
-
-        const geminiResult = await processWithGemini(extractedResult, processingPrompt);
-        console.log('[refresh-jobs] Gemini raw result length:', geminiResult ? geminiResult.length : 0);
-        console.log('[refresh-jobs] Gemini raw result (first 5000 chars):', geminiResult ? geminiResult.slice(0, 5000) : '(null/undefined)');
-
-        const parsed = extractJsonFromText(geminiResult);
-        console.log('[refresh-jobs] Parsed JSON keys:', parsed && typeof parsed === 'object' ? Object.keys(parsed) : '(non-object)');
-
-        const jobs = Array.isArray(parsed.jobs) ? parsed.jobs : [];
-        console.log('[refresh-jobs] jobs array length:', jobs.length);
+        console.log('[refresh-jobs] jobs array length from Tavily:', jobs.length);
         if (jobs.length > 0) {
           console.log('[refresh-jobs] First job sample:', JSON.stringify(jobs[0], null, 2));
         }
 
         if (!jobs.length) {
-          throw new Error('No jobs found in extracted data');
+          throw new Error('No jobs found in Tavily answer');
         }
 
         // Group jobs by normalized city
