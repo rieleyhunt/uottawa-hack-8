@@ -9,7 +9,8 @@ const port = process.env.PORT || 3001;
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const YELLOWCAKE_API_KEY = process.env.YELLOWCAKE_API_KEY;
+const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
+const TAVILY_API_URL = 'https://api.tavily.com/search';
 const MONGO_URI = process.env.MONGO_URI;
 
 if (MONGO_URI) {
@@ -38,38 +39,51 @@ const CityJobsSchema = new mongoose.Schema({
 });
 
 const CityJobs = mongoose.models.CityJobs || mongoose.model('CityJobs', CityJobsSchema);
-// YellowCake extraction
+// Tavily-powered extraction
 async function extractStream(url, prompt) {
-  if (!YELLOWCAKE_API_KEY) {
-    throw new Error('YELLOWCAKE_API_KEY is not set in environment variables');
+  if (!TAVILY_API_KEY) {
+    throw new Error('TAVILY_API_KEY is not set in environment variables');
   }
 
-  const res = await fetch("https://api.yellowcake.dev/v1/extract-stream", {
-    method: "POST",
+  const tavilyQuery = `${prompt}\n\nTarget URL: ${url}\nPlease open this URL and any relevant links it contains, and include raw content from those pages.`;
+
+  const res = await fetch(TAVILY_API_URL, {
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": YELLOWCAKE_API_KEY,
+      'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ url, prompt }),
+    body: JSON.stringify({
+      api_key: TAVILY_API_KEY,
+      query: tavilyQuery,
+      search_depth: 'advanced',
+      include_answer: true,
+      include_raw_content: true,
+      max_results: 20
+    })
   });
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(`YellowCake API error: ${errorData.error?.message || res.statusText}`);
+    throw new Error(`Tavily API error: ${errorData.error?.message || res.statusText}`);
   }
 
-  // Read the stream
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let result = '';
+  const data = await res.json();
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    result += decoder.decode(value, { stream: true });
+  let combined = '';
+  if (data.answer) {
+    combined += `Answer:\n${data.answer}\n\n`;
   }
 
-  return result;
+  if (Array.isArray(data.results)) {
+    combined += data.results.map(r => {
+      const title = r.title || '';
+      const content = r.content || '';
+      const resultUrl = r.url || '';
+      return `URL: ${resultUrl}\nTitle: ${title}\nContent:\n${content}`;
+    }).join('\n\n---\n\n');
+  }
+
+  return combined || JSON.stringify(data);
 }
 
 // Call OpenRouter Gemini
@@ -106,9 +120,9 @@ async function callGemini(prompt, model = 'google/gemini-3-pro-preview') {
   return data.choices[0].message.content;
 }
 
-// Process YellowCake result with Gemini
-async function processWithGemini(yellowCakeResult, processingPrompt) {
-  const prompt = `${processingPrompt}\n\nData from YellowCake:\n${yellowCakeResult}`;
+// Process extracted result with Gemini
+async function processWithGemini(extractedResult, processingPrompt) {
+  const prompt = `${processingPrompt}\n\nExtracted Data:\n${extractedResult}`;
   return await callGemini(prompt);
 }
 
@@ -177,7 +191,7 @@ const server = http.createServer(async (req, res) => {
       res.end(data);
     });
   }
-  // API endpoint: YellowCake + Gemini (generic)
+  // API endpoint: Tavily + Gemini (generic)
   else if (pathname === '/api/scrape-and-process' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => {
@@ -192,13 +206,13 @@ const server = http.createServer(async (req, res) => {
           throw new Error('URL and extractPrompt are required');
         }
 
-        // Step 1: Extract with YellowCake
-        const yellowCakeResult = await extractStream(url, extractPrompt);
+        // Step 1: Extract with Tavily
+        const extractedResult = await extractStream(url, extractPrompt);
 
         // Step 2: Process with Gemini (if processPrompt provided)
-        let result = yellowCakeResult;
+        let result = extractedResult;
         if (processPrompt) {
-          result = await processWithGemini(yellowCakeResult, processPrompt);
+          result = await processWithGemini(extractedResult, processPrompt);
         }
 
         res.statusCode = 200;
@@ -211,7 +225,7 @@ const server = http.createServer(async (req, res) => {
       }
     });
   }
-  // API endpoint: refresh internships database from GitHub via YellowCake + Gemini
+  // API endpoint: refresh internships database from GitHub via Tavily + Gemini
   else if (pathname === '/api/refresh-jobs' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => {
@@ -255,12 +269,12 @@ Output format:
 - For each job, clearly label the fields like "Title:", "Company:", "Location:", "URL:", "Summary:", "Skills:" so another model can reliably parse it.
 - Include as many jobs as you can, but keep each job summary concise.`;
 
-  console.log('[refresh-jobs] Extract prompt (first 500 chars):', extractPrompt.slice(0, 500));
+    console.log('[refresh-jobs] Extract prompt (first 500 chars):', extractPrompt.slice(0, 500));
 
-        const yellowCakeResult = await extractStream(githubUrl, extractPrompt);
+      const extractedResult = await extractStream(githubUrl, extractPrompt);
 
-  console.log('[refresh-jobs] YellowCake raw result length:', yellowCakeResult ? yellowCakeResult.length : 0);
-  console.log('[refresh-jobs] YellowCake raw result (first 5000 chars):', yellowCakeResult ? yellowCakeResult.slice(0, 5000) : '(null/undefined)');
+    console.log('[refresh-jobs] Tavily raw result length:', extractedResult ? extractedResult.length : 0);
+    console.log('[refresh-jobs] Tavily raw result (first 5000 chars):', extractedResult ? extractedResult.slice(0, 5000) : '(null/undefined)');
 
         const processingPrompt = `You are a helpful assistant.
 You will receive raw extracted text from an internships listing page.
@@ -286,7 +300,7 @@ Rules:
 
         console.log('[refresh-jobs] Processing prompt (first 500 chars):', processingPrompt.slice(0, 500));
 
-        const geminiResult = await processWithGemini(yellowCakeResult, processingPrompt);
+        const geminiResult = await processWithGemini(extractedResult, processingPrompt);
         console.log('[refresh-jobs] Gemini raw result length:', geminiResult ? geminiResult.length : 0);
         console.log('[refresh-jobs] Gemini raw result (first 5000 chars):', geminiResult ? geminiResult.slice(0, 5000) : '(null/undefined)');
 
