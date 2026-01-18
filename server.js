@@ -287,16 +287,10 @@ async function summarizeJobWithTavily(jobUrl) {
     body: JSON.stringify({
       api_key: TAVILY_API_KEY,
       query,
-      // Lighter settings for speed: shallow search, skip raw content, fewer results
       search_depth: 'basic',
       include_answer: true,
-<<<<<<< HEAD
       include_raw_content: false,
       max_results: 2
-=======
-      include_raw_content: true,
-      max_results: 10 // Increased from 3 to 10 for richer job content
->>>>>>> 6e8e47b6c254493b6275b3f63af4e33acde22e8d
     })
   });
 
