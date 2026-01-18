@@ -230,8 +230,14 @@ async function fetchGithubReadmeJobUrls(readmeUrl, maxUrls = 200) {
     throw new Error(`Failed to fetch README: ${res.status} ${res.statusText}`);
   }
 
-  const text = await res.text();
+  let text = await res.text();
   console.log('[fetchGithubReadmeJobUrls] README length:', text.length);
+
+  // Limit to first 20,000 characters to avoid Gemini context overflow
+  if (text.length > 20000) {
+    text = text.slice(0, 20000);
+    console.log('[fetchGithubReadmeJobUrls] Truncated README to 20,000 characters for Gemini extraction.');
+  }
 
   // Use Gemini to extract all job listing URLs from the README text
   const geminiPrompt = `You are an expert at parsing markdown and extracting job listing URLs.\n\nGiven the following README.md content, extract a VERY LARGE and COMPREHENSIVE list of all unique external job posting URLs (not internal GitHub links).\n\nReturn STRICT JSON: {\n  "urls": [string]\n}\n\nREADME.md content:\n${text}`;
