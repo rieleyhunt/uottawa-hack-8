@@ -615,14 +615,8 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        // Optionally filter by job title before sending to Gemini to reduce context
+        // Include all jobs from the city, with optional job title context for better matching
         let jobsForModel = cityDoc.jobs;
-        if (jobTitle && jobTitle.trim()) {
-          const titleLower = jobTitle.toLowerCase();
-          jobsForModel = jobsForModel.filter(j =>
-            (j.title || '').toLowerCase().includes(titleLower)
-          );
-        }
 
         // Limit number of jobs sent to model to keep prompt size manageable
         const MAX_JOBS = 200;
@@ -631,14 +625,20 @@ const server = http.createServer(async (req, res) => {
         }
 
         const jobsJson = JSON.stringify(jobsForModel);
+        const jobTitleContext = jobTitle && jobTitle.trim() 
+          ? `The user is interested in positions related to: ${jobTitle}`
+          : 'Show all relevant positions.';
 
         const processPrompt = `You are an expert career coach and matching engine.
 
 You will receive:
 1) A student's resume text.
 2) A JSON array of internship job listings for the city "${city}".
+3) Optional job preferences.
 
-Your task: compare the resume to these jobs and return the best matches.
+Your task: compare the resume to ALL available jobs and return ranked matches by relevance.
+
+${jobTitleContext}
 
 Jobs JSON:
 ${jobsJson}
@@ -663,10 +663,12 @@ Respond in STRICT JSON with this exact schema:
 }
 
 Rules:
-- matchScore is between 0 and 100.
-- Sort matches by matchScore descending.
-- Only include jobs that are reasonably relevant to the resume.
-- If nothing matches well, then at least return some jobs that are similar.`;
+- matchScore is between 0 and 100 (be generous with scoring - show related opportunities).
+- ALWAYS return at least 5-10 matches if available, sorted by matchScore descending.
+- Include jobs that relate to the user's skills or interests, even if not a perfect title match.
+- If user searched for "${jobTitle}", prioritize those roles but also show related opportunities.
+- Be inclusive: show junior-level positions, related roles, and growth opportunities.
+- Never return empty results if jobs exist in the database.`;
 
         const result = await callGemini(processPrompt);
         const comparison = extractJsonFromText(result);
