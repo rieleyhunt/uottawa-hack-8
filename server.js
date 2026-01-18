@@ -39,13 +39,20 @@ const CityJobsSchema = new mongoose.Schema({
 });
 
 const CityJobs = mongoose.models.CityJobs || mongoose.model('CityJobs', CityJobsSchema);
+const TAVILY_MAX_QUERY_LENGTH = 390; // Tavily max is 400 chars; keep a small safety margin
 // Tavily-powered extraction
 async function extractStream(url, prompt) {
   if (!TAVILY_API_KEY) {
     throw new Error('TAVILY_API_KEY is not set in environment variables');
   }
 
-  const tavilyQuery = `${prompt}\n\nTarget URL: ${url}\nPlease open this URL and any relevant links it contains, and include raw content from those pages.`;
+  let tavilyQuery = `${prompt}\n\nTarget URL: ${url}\nPlease open this URL and any relevant links it contains, and include raw content from those pages.`;
+
+  if (tavilyQuery.length > TAVILY_MAX_QUERY_LENGTH) {
+    tavilyQuery = tavilyQuery.slice(0, TAVILY_MAX_QUERY_LENGTH);
+  }
+
+  console.log('[extractStream] Tavily query length:', tavilyQuery.length);
 
   const res = await fetch(TAVILY_API_URL, {
     method: 'POST',
@@ -133,19 +140,15 @@ async function tavilyExtractJobsFromGithubReadme(url) {
     throw new Error('TAVILY_API_KEY is not set in environment variables');
   }
 
-  const query = `You are an expert internships scraper.\n\n` +
-    `You are given the URL of the SimplifyJobs Summer 2026 internships README: ${url}. ` +
-    `Open this README and any job posting links it contains. ` +
-    `For every internship you can find, extract a structured job object with:\n` +
-    `- title (job title)\n` +
-    `- company\n` +
-    `- location (e.g. "Toronto, ON, Canada")\n` +
-    `- city (simple city name only, e.g. "Toronto", "Ottawa", "New York")\n` +
-    `- url (job posting URL)\n` +
-    `- description (2-4 sentence summary of responsibilities and requirements)\n` +
-    `- skills (array of key tools/technologies, e.g. ["Python", "React", "SQL"])\n\n` +
-    `Respond in STRICT JSON with this exact schema and nothing else:\n` +
-    `{"jobs":[{"title":string,"company":string,"location":string,"city":string,"url":string,"description":string,"skills":string[]}]}`;
+  let query = `Summer 2026 internships from GitHub README at ${url}. ` +
+    `Open the README and all job posting links. ` +
+    `Return STRICT JSON: {"jobs":[{"title":string,"company":string,"location":string,"city":string,"url":string,"description":string,"skills":string[]}]}.`;
+
+  if (query.length > TAVILY_MAX_QUERY_LENGTH) {
+    query = query.slice(0, TAVILY_MAX_QUERY_LENGTH);
+  }
+
+  console.log('[tavilyExtractJobsFromGithubReadme] Tavily query length:', query.length);
 
   const res = await fetch(TAVILY_API_URL, {
     method: 'POST',
