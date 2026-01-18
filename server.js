@@ -46,7 +46,7 @@ async function extractStream(url, prompt) {
     throw new Error('TAVILY_API_KEY is not set in environment variables');
   }
 
-  let tavilyQuery = `${prompt}\n\nTarget URL: ${url}\nPlease open this URL and any relevant links it contains, and include raw content from those pages.`;
+  let tavilyQuery = `${prompt}\n\nTarget URL: ${url}\nPlease open this URL and this URL only, and include raw content from those pages.`;
 
   if (tavilyQuery.length > TAVILY_MAX_QUERY_LENGTH) {
     tavilyQuery = tavilyQuery.slice(0, TAVILY_MAX_QUERY_LENGTH);
@@ -62,10 +62,10 @@ async function extractStream(url, prompt) {
     body: JSON.stringify({
       api_key: TAVILY_API_KEY,
       query: tavilyQuery,
-      search_depth: 'advanced',
+      search_depth: 'basic',
       include_answer: true,
       include_raw_content: true,
-      max_results: 20
+      max_results: 5
     })
   });
 
@@ -233,10 +233,10 @@ async function fetchGithubReadmeJobUrls(readmeUrl, maxUrls = 200) {
   let text = await res.text();
   console.log('[fetchGithubReadmeJobUrls] README length:', text.length);
 
-  // Limit to first 20,000 characters to avoid Gemini context overflow
-  if (text.length > 20000) {
-    text = text.slice(0, 20000);
-    console.log('[fetchGithubReadmeJobUrls] Truncated README to 20,000 characters for Gemini extraction.');
+  // Limit to first 100,000 characters to avoid Gemini context overflow
+  if (text.length > 100000) {
+    text = text.slice(0, 100000);
+    console.log('[fetchGithubReadmeJobUrls] Truncated README to 100,000 characters for Gemini extraction.');
   }
 
   // Use Gemini to extract all job listing URLs from the README text
@@ -612,7 +612,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         // Limit number of jobs sent to model to keep prompt size manageable
-        const MAX_JOBS = 60;
+        const MAX_JOBS = 200;
         if (jobsForModel.length > MAX_JOBS) {
           jobsForModel = jobsForModel.slice(0, MAX_JOBS);
         }
