@@ -530,31 +530,44 @@ const server = http.createServer(async (req, res) => {
           console.log('[refresh-jobs] City group:', cityKey, 'displayName:', value.city, 'jobCount:', value.jobs.length);
         }
 
-        // Clear existing city jobs collection and insert new data
-        await CityJobs.deleteMany({});
-
-        const docs = [];
+        // Merge new jobs into existing city documents instead of clearing
+        let updatedCities = 0;
         for (const value of byCity.values()) {
-          docs.push({
-            city: value.city,
-            normalizedCity: value.normalizedCity,
-            jobs: value.jobs,
-            lastRefreshed: new Date()
-          });
+          const existingCity = await CityJobs.findOne({ normalizedCity: value.normalizedCity });
+          
+          if (existingCity) {
+            // Merge jobs, avoiding duplicates by URL
+            const existingUrls = new Set(existingCity.jobs.map(j => j.url));
+            const newJobs = value.jobs.filter(j => !existingUrls.has(j.url));
+            
+            if (newJobs.length > 0) {
+              existingCity.jobs.push(...newJobs);
+              existingCity.lastRefreshed = new Date();
+              await existingCity.save();
+              console.log(`[refresh-jobs] Added ${newJobs.length} new jobs to ${value.city}`);
+            } else {
+              console.log(`[refresh-jobs] No new jobs for ${value.city}, all duplicates`);
+            }
+          } else {
+            // New city, insert it
+            await CityJobs.create({
+              city: value.city,
+              normalizedCity: value.normalizedCity,
+              jobs: value.jobs,
+              lastRefreshed: new Date()
+            });
+            console.log(`[refresh-jobs] Created new city: ${value.city} with ${value.jobs.length} jobs`);
+          }
+          updatedCities++;
         }
 
-        if (docs.length) {
-          console.log('[refresh-jobs] Inserting documents into MongoDB. Total docs:', docs.length);
-          await CityJobs.insertMany(docs);
-        }
-
-        console.log('[refresh-jobs] Refresh completed successfully. totalCities:', docs.length, 'totalJobs:', jobs.length);
+        console.log('[refresh-jobs] Refresh completed successfully. updatedCities:', updatedCities, 'totalJobs:', jobs.length);
 
         res.statusCode = 200;
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({
           message: 'Jobs database refreshed',
-          totalCities: docs.length,
+          updatedCities: updatedCities,
           totalJobs: jobs.length
         }));
       } catch (error) {
