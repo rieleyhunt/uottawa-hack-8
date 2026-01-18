@@ -209,11 +209,12 @@
 </head>
 <body>
     <div class="container">
-        <h1>ResuMatch</h1>
+        <h1>🎯 ResuMatch</h1>
         <p class="subtitle">Find jobs that best match your skills!</p>
+        
         <div class="input-section">
             <div class="input-group">
-                <h2>Upload PDF</h2>
+                <h2>Upload Resume (PDF)</h2>
                 <div class="file-input-wrapper">
                     <input type="file" id="fileInput" accept=".pdf" />
                     <label for="fileInput" class="file-input-label">
@@ -224,26 +225,12 @@
             </div>
 
             <div class="input-group">
-                <h2>Paste Text</h2>
+                <h2>Or Paste Resume Text</h2>
                 <textarea id="resumeText" placeholder="Paste your resume text here..."></textarea>
             </div>
         </div>
 
-        <div class="button-area">
-            <button id="analyzeBtn">Analyze Resume</button>
-            <button class="secondary" id="clearBtn">Clear</button>
-        </div>
-
-        <div class="results" id="results">
-            <div id="errorMsg" class="error" style="display: none;"></div>
-            <div id="loadingMsg" class="loading" style="display: none;">Analyzing resume...</div>
-            <div id="analysisContent"></div>
-        </div>
-
-        <hr style="margin: 50px 0; border: none; border-top: 2px solid #e0e0e0;">
-
-        <h1 style="margin-top: 0;">🎯 Job Matcher</h1>
-        <p class="subtitle">Find matching internships based on your resume, city, and job title preferences</p>
+        <h2 style="font-size: 18px; color: #333; margin: 30px 0 20px 0; border-bottom: 2px solid #333; padding-bottom: 10px;">Job Preferences</h2>
 
         <div class="input-section">
             <div class="input-group">
@@ -260,7 +247,7 @@
 
         <div class="button-area">
             <button id="matchBtn">Find Matching Jobs</button>
-            <button class="secondary" id="clearMatchBtn">Clear</button>
+            <button class="secondary" id="clearMatchBtn">Clear All</button>
         </div>
 
         <div class="results" id="matchResults">
@@ -274,15 +261,17 @@
         const fileInput = document.getElementById('fileInput');
         const fileName = document.getElementById('fileName');
         const resumeText = document.getElementById('resumeText');
-        const analyzeBtn = document.getElementById('analyzeBtn');
-        const clearBtn = document.getElementById('clearBtn');
-        const results = document.getElementById('results');
-        const loadingMsg = document.getElementById('loadingMsg');
-        const errorMsg = document.getElementById('errorMsg');
-        const analysisContent = document.getElementById('analysisContent');
+        const matchCity = document.getElementById('matchCity');
+        const matchJobTitle = document.getElementById('matchJobTitle');
+        const matchBtn = document.getElementById('matchBtn');
+        const clearMatchBtn = document.getElementById('clearMatchBtn');
+        const matchResults = document.getElementById('matchResults');
+        const matchLoadingMsg = document.getElementById('matchLoadingMsg');
+        const matchErrorMsg = document.getElementById('matchErrorMsg');
+        const matchContent = document.getElementById('matchContent');
 
         let selectedFile = null;
-        let pastedResumeText = null; // Store pasted text separately
+        let pastedResumeText = null;
 
         // File input handling
         fileInput.addEventListener('change', (e) => {
@@ -290,27 +279,6 @@
             if (selectedFile) {
                 fileName.textContent = `✓ ${selectedFile.name}`;
                 pastedResumeText = null; // Clear pasted text when file is uploaded
-            }
-        });
-
-        // Paste text handling with confirmation
-        resumeText.addEventListener('blur', () => {
-            const text = resumeText.value.trim();
-            if (text) {
-                pastedResumeText = text;
-                resumeText.value = '✓ Resume text uploaded';
-                resumeText.style.color = '#4caf50';
-                resumeText.style.fontWeight = 'bold';
-                selectedFile = null; // Clear file when text is pasted
-                fileName.textContent = '';
-            }
-        });
-
-        resumeText.addEventListener('focus', () => {
-            if (resumeText.value === '✓ Resume text uploaded') {
-                resumeText.value = pastedResumeText || '';
-                resumeText.style.color = '';
-                resumeText.style.fontWeight = '';
             }
         });
 
@@ -333,106 +301,6 @@
                 fileName.textContent = `✓ ${selectedFile.name}`;
             }
         });
-
-        // Analyze button
-        analyzeBtn.addEventListener('click', async () => {
-            const text = pastedResumeText || resumeText.value.trim();
-
-            if (!selectedFile && !text) {
-                errorMsg.textContent = 'Please upload a PDF or paste resume text';
-                errorMsg.style.display = 'block';
-                results.classList.add('show');
-                return;
-            }
-
-            results.classList.add('show');
-            loadingMsg.style.display = 'block';
-            errorMsg.style.display = 'none';
-            analysisContent.innerHTML = '';
-
-            try {
-                let resumeContent = text;
-
-                // If file selected, read it
-                if (selectedFile) {
-                    resumeContent = await readPdfFile(selectedFile);
-                }
-
-                const res = await fetch('/api/analyze-resume', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ resumeContent }),
-                });
-
-                const data = await res.json();
-                loadingMsg.style.display = 'none';
-
-                if (res.ok) {
-                    displayAnalysis(data.analysis);
-                } else {
-                    errorMsg.textContent = `Error: ${data.error}`;
-                    errorMsg.style.display = 'block';
-                }
-            } catch (error) {
-                loadingMsg.style.display = 'none';
-                errorMsg.textContent = `Error: ${error.message}`;
-                errorMsg.style.display = 'block';
-            }
-        });
-
-        function readPdfFile(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    // Convert ArrayBuffer to base64
-                    const bytes = new Uint8Array(e.target.result);
-                    let binary = '';
-                    for (let i = 0; i < bytes.byteLength; i++) {
-                        binary += String.fromCharCode(bytes[i]);
-                    }
-                    const base64 = btoa(binary);
-                    resolve(base64);
-                };
-                reader.onerror = reject;
-                reader.readAsArrayBuffer(file);
-            });
-        }
-
-        function displayAnalysis(analysis) {
-            // Parse the analysis from Gemini
-            analysisContent.innerHTML = `
-                <h2>Analysis Results</h2>
-                <div style="white-space: pre-wrap; line-height: 1.6; color: #333;">
-                    ${analysis.replace(/\n\n/g, '</p><p>').replace(/^/, '<p>').replace(/$/, '</p>')}
-                </div>
-            `;
-        }
-
-        // Clear button
-        clearBtn.addEventListener('click', () => {
-            selectedFile = null;
-            pastedResumeText = null;
-            fileInput.value = '';
-            resumeText.value = '';
-            resumeText.style.color = '';
-            resumeText.style.fontWeight = '';
-            fileName.textContent = '';
-            results.classList.remove('show');
-            errorMsg.style.display = 'none';
-            analysisContent.innerHTML = '';
-        });
-
-        // Job matcher elements
-        const matchCity = document.getElementById('matchCity');
-        const matchJobTitle = document.getElementById('matchJobTitle');
-        const matchBtn = document.getElementById('matchBtn');
-        const clearMatchBtn = document.getElementById('clearMatchBtn');
-        const matchResults = document.getElementById('matchResults');
-        const matchLoadingMsg = document.getElementById('matchLoadingMsg');
-        const matchErrorMsg = document.getElementById('matchErrorMsg');
-        const matchContent = document.getElementById('matchContent');
 
         // Match button handler
         matchBtn.addEventListener('click', async () => {
@@ -498,6 +366,23 @@
             }
         });
 
+        function readPdfFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const bytes = new Uint8Array(e.target.result);
+                    let binary = '';
+                    for (let i = 0; i < bytes.byteLength; i++) {
+                        binary += String.fromCharCode(bytes[i]);
+                    }
+                    const base64 = btoa(binary);
+                    resolve(base64);
+                };
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
         function displayMatches(data) {
             if (data.message) {
                 matchContent.innerHTML = `<div style="padding: 20px; text-align: center; color: #666;">${data.message}</div>`;
@@ -557,6 +442,11 @@
 
         // Clear match button
         clearMatchBtn.addEventListener('click', () => {
+            selectedFile = null;
+            pastedResumeText = null;
+            fileInput.value = '';
+            resumeText.value = '';
+            fileName.textContent = '';
             matchCity.value = '';
             matchJobTitle.value = '';
             matchResults.classList.remove('show');
