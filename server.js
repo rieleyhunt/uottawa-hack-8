@@ -199,7 +199,9 @@ Rules:
 - Ensure the JSON parses successfully in JavaScript.
 - city should be a simple city name (no country, no state codes).
 - Include as many distinct internship jobs as possible, up to 200 entries.
-- skills must be specific technologies, languages, frameworks, or tools (e.g. "Python", "React", "AWS", "PostgreSQL"), not soft skills like "communication" or "teamwork".`;
+- For the 'skills' array, extract a VERY LARGE and COMPREHENSIVE list of all technical skills, programming languages, frameworks, libraries, tools, platforms, and relevant keywords mentioned in the job description and requirements.
+- Include not just the main skills, but also any secondary or related technologies, tools, and keywords.
+- Do NOT include soft skills like 'communication' or 'teamwork'.`;
 
   const geminiInput = `${processingPrompt}\n\nTavily answer:\n${answer}`;
   const geminiResult = await callGemini(geminiInput);
@@ -231,27 +233,31 @@ async function fetchGithubReadmeJobUrls(readmeUrl, maxUrls = 200) {
   const text = await res.text();
   console.log('[fetchGithubReadmeJobUrls] README length:', text.length);
 
-  const urlSet = new Set();
-  // Match markdown links like [text](https://url) and [text](<https://url>)
-  const linkRegex = /\]\((<?)(https?:\/\/[^>)]+)(>?)\)/g;
-  let match;
+  // Use Gemini to extract all job listing URLs from the README text
+  const geminiPrompt = `You are an expert at parsing markdown and extracting job listing URLs.\n\nGiven the following README.md content, extract a VERY LARGE and COMPREHENSIVE list of all unique external job posting URLs (not internal GitHub links).\n\nReturn STRICT JSON: {\n  "urls": [string]\n}\n\nREADME.md content:\n${text}`;
 
-  while ((match = linkRegex.exec(text)) !== null) {
-    const foundUrl = match[2];
-    if (!foundUrl) continue;
-    // Skip internal GitHub links; keep external job posting URLs
-    if (foundUrl.includes('github.com/SimplifyJobs')) continue;
-
-    if (!urlSet.has(foundUrl)) {
-      urlSet.add(foundUrl);
-      if (urlSet.size >= maxUrls) break;
+  let urlList = [];
+  try {
+    const geminiResult = await callGemini(geminiPrompt);
+    const parsed = extractJsonFromText(geminiResult);
+    if (Array.isArray(parsed.urls)) {
+      urlList = parsed.urls.filter(url => typeof url === 'string');
     }
+  } catch (err) {
+    console.error('[fetchGithubReadmeJobUrls] Gemini URL extraction failed:', err);
+    // fallback: return empty list
+    urlList = [];
   }
 
-  const urls = Array.from(urlSet);
-  console.log('[fetchGithubReadmeJobUrls] Extracted job URLs count:', urls.length);
-  console.log('[fetchGithubReadmeJobUrls] Sample URLs:', urls.slice(0, 10));
-  return urls;
+  // Remove internal GitHub links and limit to maxUrls
+  urlList = urlList.filter(url => !url.includes('github.com/SimplifyJobs'));
+  if (urlList.length > maxUrls) {
+    urlList = urlList.slice(0, maxUrls);
+  }
+
+  console.log('[fetchGithubReadmeJobUrls] Extracted job URLs count (Gemini):', urlList.length);
+  console.log('[fetchGithubReadmeJobUrls] Sample URLs:', urlList.slice(0, 10));
+  return urlList;
 }
 
 // Summarize a single job posting page into a job object using Tavily
@@ -278,7 +284,7 @@ async function summarizeJobWithTavily(jobUrl) {
       search_depth: 'advanced',
       include_answer: true,
       include_raw_content: true,
-      max_results: 3
+      max_results: 10 // Increased from 3 to 10 for richer job content
     })
   });
 
@@ -311,7 +317,9 @@ Rules:
 - Respond with JSON ONLY, no explanations.
 - Ensure the JSON parses successfully in JavaScript.
 - city should be a simple city name (no country, no state codes).
-- skills must be specific technologies, languages, frameworks, or tools (e.g. "Python", "React", "AWS", "PostgreSQL"), not soft skills like "communication" or "teamwork".`;
+- For the 'skills' array, extract a VERY LARGE and COMPREHENSIVE list of all technical skills, programming languages, frameworks, libraries, tools, platforms, and relevant keywords mentioned in the job description and requirements.
+- Include not just the main skills, but also any secondary or related technologies, tools, and keywords.
+- Do NOT include soft skills like 'communication' or 'teamwork'.`;
 
   const geminiInput = `${processingPrompt}\n\nTavily answer for job page:\n${answer}`;
   const geminiResult = await callGemini(geminiInput);
@@ -465,7 +473,8 @@ const server = http.createServer(async (req, res) => {
 
         console.log('[refresh-jobs] Starting refresh using README URL:', readmeUrl);
 
-        const jobUrls = await fetchGithubReadmeJobUrls(readmeUrl, 100);
+        // Increase to 200 URLs to maximize job count
+        const jobUrls = await fetchGithubReadmeJobUrls(readmeUrl, 200);
         console.log('[refresh-jobs] Total job URLs to process:', jobUrls.length);
 
         const jobs = [];
@@ -481,6 +490,9 @@ const server = http.createServer(async (req, res) => {
         }
 
         console.log('[refresh-jobs] Final jobs array length from Tavily per-URL:', jobs.length);
+        if (jobs.length < 50) {
+          console.warn(`[refresh-jobs] WARNING: Only ${jobs.length} jobs were fetched. Consider increasing maxUrls or checking source data.`);
+        }
         if (!jobs.length) {
           throw new Error('No jobs could be summarized from job URLs');
         }
