@@ -465,7 +465,7 @@ const server = http.createServer(async (req, res) => {
 
         console.log('[refresh-jobs] Starting refresh using README URL:', readmeUrl);
 
-        const jobUrls = await fetchGithubReadmeJobUrls(readmeUrl, 200);
+        const jobUrls = await fetchGithubReadmeJobUrls(readmeUrl, 100);
         console.log('[refresh-jobs] Total job URLs to process:', jobUrls.length);
 
         const jobs = [];
